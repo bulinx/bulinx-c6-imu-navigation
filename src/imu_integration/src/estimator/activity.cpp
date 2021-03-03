@@ -122,20 +122,54 @@ bool Activity::UpdatePose(void) {
         // keep the latest IMU measurement for mid-value integration:
         imu_data_buff_.push_back(imu_data);
     } else {
-        //
-        // TODO: implement your estimation here
-        //
-        // get deltas:
-
-        // update orientation:
-
-        // get velocity delta:
-
-        // update position:
-
-        // move forward -- 
         // NOTE: this is NOT fixed. you should update your buffer according to the method of your choice:
+        #ifdef FIRST_ORDER
+        // 获取增量:
+        Eigen::Vector3d angular_delta; 
+
+        GetAngularDelta(1, 0, angular_delta);
+
+        //  更新方向:
+        Eigen::Matrix3d R_curr, R_prev;
+        UpdateOrientation(angular_delta, R_curr, R_prev);
+
+        //   获取速度增量:
+        double delta_t;
+        Eigen::Vector3d velocity_delta;
+        GetVelocityDelta(1, 0, R_curr, R_prev, delta_t, velocity_delta);
+
+        //  更新位置:
+        UpdatePosition(delta_t, velocity_delta);
+
+        // move forward:
+       imu_data_buff_.pop_front();
+        #else
+        // 得到角增量:
+        Eigen::Vector3d angular_delta_1, angular_delta_2;
+        GetAngularDelta(1, 0, angular_delta_1);
+        GetAngularDelta(2, 1, angular_delta_2);
+
+        // 有效旋转  :
+        Eigen::Vector3d angular_delta = angular_delta_1 + angular_delta_2 + 2.0/3.0*angular_delta_1.cross(angular_delta_2);
+
+        // 更新方向:
+        Eigen::Matrix3d R_curr, R_prev;
+        UpdateOrientation(angular_delta, R_curr, R_prev);
+
+        // 获取速度增量:
+        double delta_t;
+        Eigen::Vector3d velocity_delta;
+        GetVelocityDelta(2, 0, R_curr, R_prev, delta_t, velocity_delta);
+
+        //更新位置:
+        UpdatePosition(delta_t, velocity_delta);
+        // move forward -- 
         imu_data_buff_.pop_front();
+        imu_data_buff_.pop_front();
+
+
+        #endif
+
     }
     
     return true;
@@ -203,7 +237,7 @@ inline Eigen::Vector3d Activity::GetUnbiasedLinearAcc(
  */
 bool Activity::GetAngularDelta(
     const size_t index_curr, const size_t index_prev,
-    Eigen::Vector3d &angular_delta
+    Eigen::Vector3d &angular_delta //角速度
 ) {
     //
     // TODO: this could be a helper routine for your own implementation
@@ -218,7 +252,7 @@ bool Activity::GetAngularDelta(
     const IMUData &imu_data_curr = imu_data_buff_.at(index_curr);
     const IMUData &imu_data_prev = imu_data_buff_.at(index_prev);
 
-    double delta_t = imu_data_curr.time - imu_data_prev.time;
+    double delta_t = imu_data_curr.time - imu_data_prev.time; //当前减之前
 
     Eigen::Vector3d angular_vel_curr = GetUnbiasedAngularVel(imu_data_curr.angular_velocity);
     Eigen::Vector3d angular_vel_prev = GetUnbiasedAngularVel(imu_data_prev.angular_velocity);
@@ -240,7 +274,7 @@ bool Activity::GetAngularDelta(
 bool Activity::GetVelocityDelta(
     const size_t index_curr, const size_t index_prev,
     const Eigen::Matrix3d &R_curr, const Eigen::Matrix3d &R_prev, 
-    double &delta_t, Eigen::Vector3d &velocity_delta
+    double &delta_t, Eigen::Vector3d &velocity_delta //线速度
 ) {
     //
     // TODO: this could be a helper routine for your own implementation
@@ -272,7 +306,7 @@ bool Activity::GetVelocityDelta(
  * @param  R_prev, previous orientation
  * @return void
  */
-void Activity::UpdateOrientation(
+void Activity::UpdateOrientation( //更新方向
     const Eigen::Vector3d &angular_delta,
     Eigen::Matrix3d &R_curr, Eigen::Matrix3d &R_prev
 ) {
